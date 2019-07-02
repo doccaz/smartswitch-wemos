@@ -14,12 +14,12 @@
 // default values
 const char *DEFAULT_APSSID = "smartswitch-WEMOS";
 const char *DEFAULT_APPASS = "swt12345678";
-const char *DEFAULT_SSID = "inferno";
-const char *DEFAULT_PASS = "tacomendomerda?";
+const char *DEFAULT_SSID = "mywifinetwork";
+const char *DEFAULT_PASS = "mywifipass";
 const char *DEFAULT_APIURL = "iot.sinric.com";
 const char *DEFAULT_APIPORT = "80";
-const char *DEFAULT_DEVICEID = "5cedcf8ef8132f23b4895b8b";
-const char *DEFAULT_APIKEY = "038b9c8d-d30f-443e-ba19-bf8c107dd0dc";
+const char *DEFAULT_DEVICEID = "mydeviceID";
+const char *DEFAULT_APIKEY = "myAPIKey";
 const char *config_file = "/smartswitch.conf"; // file that holds WIFI and IOT configuration
 
 char ssid[128] = "", passphrase[128] = ""; // WIFI connection info
@@ -97,12 +97,12 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch (type) {
     case WStype_DISCONNECTED:
       isConnected = false;
-      Serial.printf("[WSc] Webservice disconnected from IOT provider!\n");
+      Serial.printf("[WSc] Webservice disconnected from IOT provider!\r\n");
       break;
     case WStype_CONNECTED: {
         isConnected = true;
-        Serial.printf("[WSc] Service connected at url: %s\n", payload);
-        Serial.printf("Waiting for commands from IOT provider...\n");
+        Serial.printf("\n[WSc] Service connected at url: %s\r\n", payload);
+        Serial.printf("\nWaiting for commands from IOT provider...\r\n");
       }
       break;
     case WStype_TEXT: {
@@ -292,42 +292,42 @@ void readConfig()
     if (line.substring(0, pos) == "ssid")
     {
       strcpy(ssid, line.substring(pos + 1).c_str());
-      Serial.printf("got ssid = %s\n", ssid);
+      Serial.printf("got ssid = %s\r\n", ssid);
     }
     if (line.substring(0, pos) == "password")
     {
       strcpy(passphrase, line.substring(pos + 1).c_str());
-      Serial.printf("got password = %s\n", passphrase);
+      Serial.printf("got password = %s\r\n", passphrase);
     }
     if (line.substring(0, pos) == "ap_ssid")
     {
       strcpy(ap_ssid, line.substring(pos + 1).c_str());
-      Serial.printf("got ap_ssid = %s\n", ap_ssid);
+      Serial.printf("got ap_ssid = %s\r\n", ap_ssid);
     }
     if (line.substring(0, pos) == "ap_password")
     {
       strcpy(ap_passphrase, line.substring(pos + 1).c_str());
-      Serial.printf("got ap_password = %s\n", ap_passphrase);
+      Serial.printf("got ap_password = %s\r\n", ap_passphrase);
     }
     if (line.substring(0, pos) == "apiurl")
     {
       strcpy(apiurl, line.substring(pos + 1).c_str());
-      Serial.printf("got apiurl = %s\n", apiurl);
+      Serial.printf("got apiurl = %s\r\n", apiurl);
     }
     if (line.substring(0, pos) == "apiport")
     {
       strcpy(apiport, line.substring(pos + 1).c_str());
-      Serial.printf("got apiport = %s\n", apiport);
+      Serial.printf("got apiport = %s\r\n", apiport);
     }
     if (line.substring(0, pos) == "apikey")
     {
       strcpy(apikey, line.substring(pos + 1).c_str());
-      Serial.printf("got apikey = %s\n", apikey);
+      Serial.printf("got apikey = %s\r\n", apikey);
     }
     if (line.substring(0, pos) == "deviceid")
     {
       strcpy(deviceId, line.substring(pos + 1).c_str());
-      Serial.printf("got deviceId = %s\n", deviceId);
+      Serial.printf("got deviceId = %s\r\n", deviceId);
     }
   }
   f.close();
@@ -341,7 +341,7 @@ void saveConfig()
   // open the file in write mode
   File f = SPIFFS.open(config_file, "w");
   if (!f) {
-    Serial.printf("file creation failed: %s\n", config_file);
+    Serial.printf("file creation failed: %s\r\n", config_file);
   }
 
   // now write lines in key/value style with  end-of-line characters
@@ -369,11 +369,11 @@ void setupWifi()
   wifi_set_phy_mode(PHY_MODE_11G);
   if (configMode) {
     Serial.print("Setting soft-AP ... ");
-    Serial.printf("using %s and %s\n", ap_ssid, ap_passphrase);
+    Serial.printf("using %s and %s\r\n", ap_ssid, ap_passphrase);
     WiFi.mode(WIFI_AP);
     if (WiFi.softAP(ap_ssid, ap_passphrase))
     {
-      Serial.printf("Success. AP SSID: %s, AP PASS: %s\n", ap_ssid, ap_passphrase);
+      Serial.printf("Success. AP SSID: %s, AP PASS: %s\r\n", ap_ssid, ap_passphrase);
       Serial.print("Web interface available at ");
       Serial.println(WiFi.softAPIP());
       digitalWrite(LED_BUILTIN, HIGH);

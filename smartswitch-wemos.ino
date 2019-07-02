@@ -8,10 +8,8 @@
 #include <ESP8266WebServer.h>
 #include <WebSocketsClient.h> //  https://github.com/kakopappa/sinric/wiki/How-to-add-dependency-libraries
 #include <ArduinoJson.h> // https://github.com/kakopappa/sinric/wiki/How-to-add-dependency-libraries (use the correct version)
-#include <AceButton.h> // https://github.com/bxparks/AceButton
 #include <StreamString.h>
 #include "FS.h"
-using namespace ace_button;
 
 // default values
 const char *DEFAULT_APSSID = "smartswitch-WEMOS";
@@ -28,15 +26,13 @@ char ssid[128] = "", passphrase[128] = ""; // WIFI connection info
 char ap_ssid[128] = "", ap_passphrase[128] = ""; // WIFI AP connection info
 char apiurl[128] = "", apiport[5] = "", apikey[128] = "", deviceId[128] = ""; // IOT settings
 
-ESP8266WebServer server(80); // HTTP server will listen at port 80
-ESP8266WiFiMulti WiFiMulti;
-WebSocketsClient webSocket;
 
-const int buttonPin = D1; // pin number for the function button
+const int buttonPin = D7; // pin number for the function button
 const int relayPin = D3;  // pin for the relay shield
 bool configMode = false; // if in config mode (rocker switch on), act as a WiFi AP, else connect to the net
 
-AceButton button(buttonPin);
+ESP8266WebServer server(80); // HTTP server will listen at port 80
+WebSocketsClient webSocket;
 
 // Web forms sent to the client
 String header =   "<h2>smart switch</h2>"
@@ -53,8 +49,6 @@ String setup_failed =
   "<p>SSID and passphrase both need to be longer than 8 characters! Configuration has NOT been changed.</p>"
   "</center>";
 
-void handle_event(AceButton*, uint8_t, uint8_t);
-
 
 #define HEARTBEAT_INTERVAL 300000 // 5 Minutes 
 
@@ -65,7 +59,6 @@ const long interval = 2000;
 // function prototypes
 String getSetupForm(void);
 String getFooter(void);
-void handle_setup(void);
 void setupWifi(void);
 void readConfig(void);
 void saveConfig(void);
@@ -154,29 +147,72 @@ void setup() {
   Serial.println("\n");
   Serial.println("=== Smart Switch by docca starting up ===");
 
-  // set up the button
-  button.setEventHandler(handle_event);
+  Serial.println();
 
   // mount the filesystem
   bool result = SPIFFS.begin();
+  delay(200);
   Serial.println("SPIFFS opened: " + result);
-
+  readConfig();
+  
+  digitalRead(buttonPin)==LOW ? configMode=true : configMode=false; 
+  delay(20);
   setupWifi();
 
   if (configMode) {
     Serial.println("*** CONFIG MODE ***");
-    // Set up the endpoints for HTTP server,  Endpoints can be written as inline functions:
-    server.on("/setup", []() {
+
+    // Set up the endpoints for HTTP server,  Endpoints can be written as inline functions:    
+    server.on("/", [&server]() {
+      Serial.println("Showing setup form");
       String form_setup = getSetupForm();
       server.send(200, "text/html", form_setup);
     });
 
-    // entry points
-    server.on("/dosetup", handle_setup);
+    server.on("/dosetup", [&server]() {
+        Serial.println("Processing setup form");
+        // compare new data with old data
+      
+        String id = server.arg("ssid");
+        String pass = server.arg("passphrase");
+        String apid = server.arg("ap_ssid");
+        String appass = server.arg("ap_passphrase");
+      
+        String url = server.arg("apiurl");
+        String port = server.arg("apiport");
+        String key = server.arg("apikey");
+        String devid = server.arg("deviceid");
+      
+        if ((id.length() >= 8) && (pass.length() >= 8) && (url.length() >= 8) && (port.length() >= 2) && (key.length() >= 8) && (devid.length() >= 8) && (apid.length() >= 8) && (appass.length() >= 8))
+        {
+          server.send(200, "text/html", setup_success + getFooter());
+          strcpy(ssid, id.c_str());
+          strcpy(passphrase, pass.c_str());
+          strcpy(ap_ssid, apid.c_str());
+          strcpy(ap_passphrase, appass.c_str());
+      
+          strcpy(apiurl, url.c_str());
+          strcpy(apiport, port.c_str());
+          strcpy(apikey, key.c_str());
+          strcpy(deviceId, devid.c_str());
+          Serial.printf("New SSID = %s, new passphrase = %s\n", ssid, passphrase);
+          Serial.printf("New AP SSID = %s, new AP passphrase = %s\n", ap_ssid, ap_passphrase);
+          Serial.printf("New API URL = %s, new API Port = %s, new API Key = %s, new Device ID = %s\n", url.c_str(), port.c_str(), key.c_str(), devid.c_str());
+          server.send(200, "text/html", setup_success);
+          saveConfig();
+          Serial.println("config saved");
+        }
+        else
+        {
+          server.send(200, "text/html", setup_failed + getFooter());
+          Serial.println("setup error, try again");
+        }
+    });
     server.begin();
     Serial.println("Webserver ready!");
-
   } else {
+    Serial.println("config mode is OFF");
+
     // server address, port and URL
     webSocket.begin(apiurl, String(apiport).toInt(), "/");
     // event handler
@@ -185,8 +221,9 @@ void setup() {
 
     // try again every 5000ms if connection has failed
     webSocket.setReconnectInterval(5000);   // If you see 'class WebSocketsClient' has no member named 'setReconnectInterval' error update arduinoWebSockets
-    Serial.printf("API Server: %s port %s\nAPI Key: %s\nDevice ID: %s\n", apiurl, apiport, apikey, deviceId); 
+    Serial.printf("API Server: %s port %s\nAPI Key: %s\nDevice ID: %s\n", apiurl, apiport, apikey, deviceId);
     Serial.println("Websocket client ready!");
+
   }
 }
 
@@ -202,6 +239,8 @@ void loop() {
         webSocket.sendTXT("H");
       }
     }
+  } else {
+    server.handleClient();
   }
 }
 
@@ -322,37 +361,43 @@ void saveConfig()
 
 void setupWifi()
 {
+
   // load config from file
   readConfig();
   delay(500);
 
+  wifi_set_phy_mode(PHY_MODE_11G);
   if (configMode) {
     Serial.print("Setting soft-AP ... ");
     Serial.printf("using %s and %s\n", ap_ssid, ap_passphrase);
+    WiFi.mode(WIFI_AP);
     if (WiFi.softAP(ap_ssid, ap_passphrase))
     {
       Serial.printf("Success. AP SSID: %s, AP PASS: %s\n", ap_ssid, ap_passphrase);
       Serial.print("Web interface available at ");
       Serial.println(WiFi.softAPIP());
       digitalWrite(LED_BUILTIN, HIGH);
-      delay(10);
+      delay(500);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(200);
       digitalWrite(LED_BUILTIN, HIGH);
-      delay(10);
-      digitalWrite(LED_BUILTIN, HIGH);
+      WiFi.printDiag(Serial);
     }
     else
     {
       Serial.printf("WiFi Failure.\n");
     }
   } else {
+    ESP8266WiFiMulti WiFiMulti;
+    WiFi.mode(WIFI_STA);
     WiFiMulti.addAP(ssid, passphrase);
     Serial.println();
     Serial.print("Connecting to Wifi: ");
     Serial.println(ssid);
-
+    WiFi.printDiag(Serial);
     // Waiting for Wifi connect
     while (WiFiMulti.run() != WL_CONNECTED) {
-      delay(500);
+      delay(1000);
       Serial.print(".");
     }
 
@@ -366,60 +411,6 @@ void setupWifi()
   }
 }
 
-void handle_event(AceButton* /* button */, uint8_t eventType,
-                  uint8_t /* buttonState */) {
-  switch (eventType) {
-    case AceButton::kEventPressed:
-      Serial.println("kEventPressed");
-      configMode = true;
-      break;
-    case AceButton::kEventReleased:
-      Serial.println("kEventReleased");
-      configMode = false;
-      break;
-  }
-}
-
-void handle_setup() {
-  Serial.println("Processing setup form");
-  // compare new data with old data
-
-  String id = server.arg("ssid");
-  String pass = server.arg("passphrase");
-  String apid = server.arg("ap_ssid");
-  String appass = server.arg("ap_passphrase");
-
-  String url = server.arg("apiurl");
-  String port = server.arg("apiport");
-  String key = server.arg("apikey");
-  String devid = server.arg("deviceid");
-
-  if ((id.length() >= 8) && (pass.length() >= 8) && (url.length() >= 8) && (port.length() >= 2) && (key.length() >= 8) && (devid.length() >= 8) && (apid.length() >= 8) && (appass.length() >= 8))
-  {
-    server.send(200, "text/html", setup_success + getFooter());
-    strcpy(ssid, id.c_str());
-    strcpy(passphrase, pass.c_str());
-    strcpy(ap_ssid, apid.c_str());
-    strcpy(ap_passphrase, appass.c_str());
-
-    strcpy(apiurl, url.c_str());
-    strcpy(apiport, port.c_str());
-    strcpy(apikey, key.c_str());
-    strcpy(deviceId, devid.c_str());
-    Serial.printf("New SSID = %s, new passphrase = %s\n", ssid, passphrase);
-    Serial.printf("New AP SSID = %s, new AP passphrase = %s\n", ap_ssid, ap_passphrase);
-    Serial.printf("New API URL = %s, new API Port = %s, new API Key = %s, new Device ID = %s\n", url.c_str(), port.c_str(), key.c_str(), devid.c_str());
-    server.send(200, "text/html", setup_success);
-    saveConfig();
-    setupWifi();
-    Serial.println("config saved");
-  }
-  else
-  {
-    server.send(200, "text/html", setup_failed + getFooter());
-    Serial.println("setup error, try again");
-  }
-}
 
 String getFooter(void)
 {
